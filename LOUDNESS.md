@@ -172,6 +172,7 @@ timescale. The measurements/timescales are:
 * [EBU Tech 3343](https://tech.ebu.ch/docs/tech/tech3343.pdf) - Loudness Production Guidelines
 * [EBU R 128](https://tech.ebu.ch/docs/r/r128.pdf) - Loudness Normalization
 * [Worldwide Loudness Delivery Standards](https://www.rtw.com/en/blog/worldwide-loudness-delivery-standards.html)
+* [SoundGirls - Demystifying Loudness Standards](https://soundgirls.org/demystifying-loudness-standards/)
 
 ## Footnotes
 
