@@ -4,8 +4,8 @@ a = Analysis(
     ['lufsplot.py'],
     pathex=[],
     binaries=[
-        ("ffmpeg.exe", "."),
-        ("ffprobe.exe", ".")
+        ("external_bin/win64/ffmpeg.exe", "."),
+        ("external_bin/win64/ffprobe.exe", ".")
     ],
     datas=[("lufsplot_icon.png", "lufsplot_icon.png")],
     hiddenimports=[],

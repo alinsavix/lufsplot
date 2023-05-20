@@ -1,0 +1,68 @@
+# Just like build, but actually publish as a release.
+#
+# FIXME: figure out how to dovetail this with the build step or such.
+name: publish windows
+run-name: ${{ github.actor }} - publish for windows
+
+on:
+    push:
+        tags:
+            - 'xxxx'
+
+permissions:
+    contents: write
+
+jobs:
+    publish_windows:
+        name: "publish windows"
+        runs-on: "windows-2022"
+        # runs-on: "ubuntu-latest"
+        needs: []
+        if: always()
+        strategy:
+            matrix:
+                arch: [x64]
+
+        steps:
+            - run: echo "Triggered by a ${{ github.event_name }} event."
+            - run: echo "Running on ${{ runner.os }}"
+            - run: echo "Checking out ${{ github.repository }}:${{ github.ref }}"
+
+            - name: Check out repository
+              uses: actions/checkout@v3
+              with:
+                lfs: true
+
+            - name: Set up Python 3.10
+              uses: actions/setup-python@v3
+              with:
+                python-version: "3.10"
+
+            - name: Set up pyinstaller
+              run: pip install pyinstaller setuptools wheel
+
+            - name: Install dependencies
+              run: pip install -r requirements.txt
+
+              # - run: pyinstaller --onefile --name lufsplot lufsplot.spec
+            - name: Package application
+              run: pyinstaller lufsplot.spec
+            # - name: Package Application
+            #   uses: JackMcKew/pyinstaller-action-windows@python3-10-pyinstaller-5-3
+            #   with:
+            #     path: .
+
+            # - uses: actions/upload-artifact@v2
+            #   with:
+            #     name: lufsplot-${{ env.git_desc }}.exe
+            #     path: dist/windows
+
+            - name: Upload release binaries
+              uses: svenstaro/upload-release-action@v2
+              with:
+                repo_token: ${{ secrets.GITHUB_TOKEN }}
+                file: dist/lufsplot.exe
+                asset_name: lufsplot-$tag-win64.exe
+                tag: ${{ github.ref }}
+                overwrite: true
+                # body: "This is my release text"
