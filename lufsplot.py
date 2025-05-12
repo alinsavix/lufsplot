@@ -480,6 +480,7 @@ class LUFSLoadAnimation:
     _axs: List[Axes]
     _lines: List[Dict[int, Line2D]]
     _data: List[List[float]]
+    _anim: Optional[animation.FuncAnimation] = None
 
     def __init__(self, loudness: Loudness, args: argparse.Namespace) -> None:
         self.args = args
@@ -616,23 +617,7 @@ class LUFSLoadAnimation:
             WINDOW = 3
             padding = [np.nan for _ in range(WINDOW - 1)]
 
-            # self._lines[0][Fields.FTPK].set_data(
-            #     T, np.ma.masked_where(ftpk >= self.args.clip_at, ftpk))
-            # self._lines[0][Fields.FTPK].set_data(
-            #     T, ftpk)
-            # x = np.max(sliding_window_view(ftpk, window_shape=5), axis=1)
-            # padding = [np.nan * (WINDOW - 1)]
-            # print(len(x))
-            # print(len(padding))
-            # self._lines[0][Fields.FTPK].set_data(T, padding + x)
-            # print(f"T shape: {np.shape(T)}")
             mmax = np.max(sliding_window_view(ftpk, window_shape=WINDOW), axis=1)
-            # print(f"x1 shape: {np.shape(x1)}")
-            # x2 = np.max(x1, axis=1)
-            # print(f"x2 shape: {np.shape(x2)}")
-            # padding.append(x2)
-            # print(f"padding shape: {np.shape(padding)}")
-            # sys.stdout.flush()
             self._lines[0][Fields.FTPK].set_data(T,
                                                  np.concatenate((padding, np.ma.masked_where(mmax >= self.args.clip_at, mmax))))
 
@@ -640,18 +625,10 @@ class LUFSLoadAnimation:
                 T, np.ma.masked_where(ftpk < self.args.clip_at, ftpk))
 
         elif self.args.clipping:
-            # self._lines[0][Fields.FTPK].set_data(
-            #     T, np.ma.masked_where(ftpk < self.args.clip_at, ftpk))
             self._lines[0][Fields.CLIP].set_data(
                 T, np.ma.masked_where(ftpk < self.args.clip_at, self.args.clip_at - (ftpk)))
 
         if self.args.lra:
-            # Sometimes the beginning and end of a track have exceedingly large
-            # loudness ranges, which throw off the scale for the rest of the graph,
-            # so we'll remove the first 15 seconds and last 6 seconds before
-            # plotting. This is absolutely not optimal at all, and better ideas
-            # are vigorously accepted.
-            # self._lines[1][Fields.LRA].set_data(T[150:-60], lra[150:-60].clip(None, 20.0))
             self._lines[1][Fields.LRA].set_data(T[150:], lra[150:].clip(None, 20.0))
             self._axs[1].relim()
             self._axs[1].autoscale_view(scalex=False, scaley=True)
@@ -682,7 +659,7 @@ class LUFSLoadAnimation:
         self._data = []
 
         self.graph_setup()
-        _anim = animation.FuncAnimation(
+        self._anim = animation.FuncAnimation(
             fig=self._fig,
             func=self.anim_update,
             frames=self.anim_frame,
@@ -693,6 +670,16 @@ class LUFSLoadAnimation:
             blit=False,  # why doesn't this completely work?
             cache_frame_data=False,
         )
+
+        if self.args.benchmark:
+            # For benchmarking, we want to show the plot but have it close automatically
+            # when the animation is done
+            def on_animation_complete(_event=None):
+                if self._end and self._anim is not None:
+                    self._anim.event_source.stop()
+                    plt.close(self._fig)
+
+            self._anim.event_source.add_callback(on_animation_complete)
 
         plt.show()
 
@@ -937,6 +924,13 @@ def parse_arguments(argv: List[str]):
         help="dB value above which is considered to be clipping (default: -1.0)",
     )
 
+    parser.add_argument(
+        "--benchmark",
+        action='store_true',
+        default=False,
+        help="run a processing benchmark and display timing information",
+    )
+
     # positional arguments
     parser.add_argument(
         "file",
@@ -963,13 +957,19 @@ def parse_arguments(argv: List[str]):
 def main(argv: List[str]) -> int:
     args = parse_arguments(argv[1:])
 
-    # loglevel = "DEBUG" if args.debug else "INFO"
-    # loglevel = "INFO"
-    # LOG_FORMAT = "[%(filename)s:%(lineno)s:%(funcName)s] (%(name)s) %(message)s"
-    # lg.basicConfig(level=loglevel, format=LOG_FORMAT)
-    # log = lg.getLogger()
+    if args.benchmark:
+        start_time = time.time()
+        print(f"Starting benchmark for {args.file.name}...", file=sys.stderr)
 
     gen_loudness(args.file, f"Loudness Analysis: {args.file.name}", args)
+
+    if args.benchmark:
+        end_time = time.time()
+        duration = end_time - start_time
+        print("\nBenchmark Results:", file=sys.stderr)
+        print(f"Total processing time: {duration:.2f} seconds", file=sys.stderr)
+        print(f"File size: {args.file.stat().st_size / (1024 * 1024):.2f} MB", file=sys.stderr)
+        print(f"Processing speed: {args.file.stat().st_size / (1024 * 1024 * duration):.2f} MB/s", file=sys.stderr)
 
     return 0
 

@@ -1,5 +1,4 @@
 {
-    "python.linting.mypyEnabled": true,
     // runs pylance in basic mode, because mypy is gonna do most of the work
     "python.analysis.typeCheckingMode": "basic",
     "python.analysis.diagnosticSeverityOverrides": {
@@ -8,5 +7,10 @@
         // "reportImportCycles": "none"
     },
     "python.analysis.inlayHints.variableTypes": false,
-    "python.analysis.inlayHints.functionReturnTypes": false
+    "python.analysis.inlayHints.functionReturnTypes": false,
+    "python.missingPackage.severity": "Information",
+    "python.terminal.activateEnvironment": false,
+    "flake8.importStrategy": "fromEnvironment",
+
+    "makefile.configureOnOpen": false
 }
