@@ -184,11 +184,11 @@ class Loudness:
         self._args = args
         self._proc = None
 
+    def __enter__(self) -> 'Loudness':
+        return self
 
-    # make sure children get reaped when we get destroyed.
-    def __del__(self) -> None:
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[Any]) -> None:
         self.close()
-
 
     # use ffprobe to get the duration of the media
     def duration(self) -> float:
@@ -718,19 +718,18 @@ class LUFSLoadAnimation:
 
 
 def gen_loudness(file: Path, title: str, args: argparse.Namespace) -> None:
-    loudness = Loudness(file, args)
+    with Loudness(file, args) as loudness:
+        anim = LUFSLoadAnimation(loudness, args=args)
+        anim.values_per_tick = 50
+        anim.title = title
 
-    anim = LUFSLoadAnimation(loudness, args=args)
-    anim.values_per_tick = 50
-    anim.title = title
+        if args.interactive:
+            anim.animate()
+        else:
+            anim.oneshot()
 
-    if args.interactive:
-        anim.animate()
-    else:
-        anim.oneshot()
-
-    if args.write_graph:
-        anim.save_final(args.outfile)
+        if args.write_graph:
+            anim.save_final(args.outfile)
 
     return
 
