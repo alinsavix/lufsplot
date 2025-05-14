@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import argparse
 import errno
 import os
@@ -16,16 +16,18 @@ from typing import (Any, Dict, Generator, Iterable, Iterator, List, Optional,
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+# Matplotlib causes a lot of lint that I'm not sure I can fix. Sorry. :(
 from matplotlib import animation
 from matplotlib.artist import Artist  # yet more just for typing
 from matplotlib.axes import Axes  # Just for typing
+from matplotlib.backend_bases import Event  # for animation event typing
 from matplotlib.figure import Figure  # also also just for typing
 from matplotlib.lines import Line2D  # also just for typing
 from numpy.lib.stride_tricks import sliding_window_view
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    FFPROBE_BIN = os.path.join(sys._MEIPASS, "ffprobe")
-    FFMPEG_BIN = os.path.join(sys._MEIPASS, "ffmpeg")
+    FFPROBE_BIN = os.path.join(sys._MEIPASS, "ffprobe")  # noqa: PL118, type: ignore
+    FFMPEG_BIN = os.path.join(sys._MEIPASS, "ffmpeg")  # noqa: PL118
 else:
     FFPROBE_BIN = "ffprobe"
     FFMPEG_BIN = "ffmpeg"
@@ -281,11 +283,12 @@ class Loudness:
             try:
                 retval = proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                warnings.warn("Unable to terminate ffmpeg subprocess",
+                warnings.warn("Unable to terminate ffmpeg subprocess", stacklevel=1,
                               category=UserWarning)
 
         if retval is not None and retval != 0:
-            warnings.warn(f"ffmpeg exited with return code {retval}", category=UserWarning)
+            warnings.warn(f"ffmpeg exited with return code {retval}", stacklevel=1,
+                          category=UserWarning)
 
         return retval
 
@@ -410,7 +413,7 @@ def prep_graph(fig: Figure, ax1: Axes, ax2: Optional[Axes], duration: float, tit
     ax1.set_yticks(list(range(-57, 4, 6)), minor=True)
     ax1.grid(True, linestyle="dotted")
 
-    ax1.format_coord = lambda x, y: f"x={sec_to_hms(x)}, y={y:0.2f}"
+    ax1.format_coord = lambda x, y: f"x={sec_to_hms(x)}, y={y:0.2f}"  # type: ignore
 
     # FIXME: should this be here, or in the actual plotting?
     ax1.axhline(y=args.target_lufs, color='orange',
@@ -437,7 +440,7 @@ def prep_graph(fig: Figure, ax1: Axes, ax2: Optional[Axes], duration: float, tit
 
     if args.peaks:
         ax1_lines[Fields.FTPK] = ax1.plot(
-            [], [], label=f"True Peak", color='r', linewidth=0.8)[0]
+            [], [], label="True Peak", color='r', linewidth=0.8)[0]
 
 
     ax1.legend(loc='lower left', shadow=True, fontsize='large')
@@ -455,7 +458,7 @@ def prep_graph(fig: Figure, ax1: Axes, ax2: Optional[Axes], duration: float, tit
         # ax2.set_ylim(ymin=0, ymax=22)
         # ax2.set_yticks(list(range(0, 21, 4)))
         ax2.set_ylabel("Loudness Range (LU)")
-        ax2.format_coord = lambda x, y: f"x={sec_to_hms(x)}, y={y:0.2f}"
+        ax2.format_coord = lambda x, y: f"x={sec_to_hms(x)}, y={y:0.2f}"  # type: ignore
 
         ax2_lines[Fields.LRA] = ax2.plot(
             [], [], label="Loudness Range", color='g', linewidth=1.5)[0]
@@ -477,7 +480,7 @@ class LUFSLoadAnimation:
     _end: bool  # We're at the end and should add extra data
 
     _fig: Figure
-    _axs: List[Axes]
+    _axs: List[Axes] | np.ndarray[Any, Any]
     _lines: List[Dict[int, Line2D]]
     _data: List[List[float]]
     _anim: Optional[animation.FuncAnimation] = None
@@ -486,6 +489,7 @@ class LUFSLoadAnimation:
         self.args = args
         self.values_per_tick = 50
         self.title = ""
+
 
         self._loudness = loudness
 
@@ -513,9 +517,9 @@ class LUFSLoadAnimation:
                                        summary["LRA high"], color='gainsboro', alpha=0.3)
             changed.append(lra)
 
-            range = summary["LRA high"] - summary["LRA low"]
-            rangestring = f"Final Loudness Range: {range:.1f} ({summary['LRA low']} to {summary['LRA high']})"
-            lra_text = self._axs[0].annotate(rangestring, (xloc + (X_PADDING * 0.75), summary["LRA low"]),
+            lra_range = summary["LRA high"] - summary["LRA low"]
+            lra_rangestring = f"Final Loudness Range: {lra_range:.1f} ({summary['LRA low']} to {summary['LRA high']})"
+            lra_text = self._axs[0].annotate(lra_rangestring, (xloc + (X_PADDING * 0.75), summary["LRA low"]),
                                              horizontalalignment='right', fontsize=14)
             changed.append(lra_text)
 
@@ -589,11 +593,11 @@ class LUFSLoadAnimation:
                     return
 
 
-    def anim_update(self, frame: List[List[float]]) -> Optional[Iterable[Artist]]:
+    def anim_update(self, frame: List[List[float]]) -> Iterable[Artist]:
         self._data += frame
 
         # FIXME: is there a better/more efficient way to manage all this?
-        lind: npt.NDArray[Any] = np.array(self._data)  # type: ignore
+        lind: npt.NDArray[Any] = np.array(self._data)
 
         T = lind[:, Fields.TIME]
         momentary = lind[:, Fields.MOMENTARY]
@@ -674,7 +678,7 @@ class LUFSLoadAnimation:
         if self.args.benchmark:
             # For benchmarking, we want to show the plot but have it close automatically
             # when the animation is done
-            def on_animation_complete(_event=None):
+            def on_animation_complete(_event: Optional[Event] = None) -> None:
                 if self._end and self._anim is not None:
                     self._anim.event_source.stop()
                     plt.close(self._fig)
@@ -708,7 +712,7 @@ class LUFSLoadAnimation:
         plt.draw()
 
 
-    def save_final(self, outfile: Path):
+    def save_final(self, outfile: Path) -> None:
         self._fig.savefig(str(outfile))
         print(f"wrote {outfile}", file=sys.stderr)
 
@@ -759,7 +763,7 @@ def check_lufs_target(target: str) -> str:
     return target
 
 # sets args.target_lufs, args.target_desc
-def set_lufs_target(args: argparse.Namespace, target) -> None:
+def set_lufs_target(args: argparse.Namespace, target: str) -> None:
     try:
         val = float(target)
         args.target_lufs = val
@@ -803,7 +807,24 @@ class NegateAction(argparse.Action):
 
         setattr(namespace, self.dest, option_string[2:4] != 'no')
 
-def parse_arguments(argv: List[str]):
+def parse_arguments(argv: List[str]) -> argparse.Namespace:
+    # Look for config file in the same directory as the input file
+    config_args = []
+    if len(argv) > 0 and argv[-1].endswith(('.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4', '.mkv', '.avi', '.mov')):
+        config_path = Path(argv[-1]).parent / "lufsplot.cfg"
+        if config_path.exists():
+            try:
+                with config_path.open('r') as f:
+                    config_content = f.read().strip()
+                    if config_content:
+                        # Split on whitespace and filter out empty strings
+                        config_args = [arg for arg in config_content.split() if arg]
+            except Exception as e:
+                print(f"Warning: Could not read config file {config_path}: {e}", file=sys.stderr)
+
+    # Combine config args with command line args
+    all_args = config_args + argv
+
     parser = argparse.ArgumentParser(
         description="Generate a BS.1770-based loudness graph for a file w/ audio",
         allow_abbrev=True,
@@ -939,7 +960,7 @@ def parse_arguments(argv: List[str]):
         help="file for which to analyze loudness",
     )
 
-    parsed_args = parser.parse_args(argv)
+    parsed_args = parser.parse_args(all_args)
     set_lufs_target(parsed_args, parsed_args.target)
 
     # make sure we enable writing the graph if the user specifies a filename

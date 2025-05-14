@@ -1,5 +1,6 @@
 [project]
 name = "lufsplot"
+version = "0.0.0"
 authors = [ { name = "TDV Alinsa", email = "alinsa-github@lupine.org" } ]
 description = "Plot an audio input's BS.1770 loudness over time"
 classifiers = [
@@ -9,13 +10,15 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.12"
 
 [tool.mypy]
-python_version = 3.9
+python_version = "3.12"
 
 mypy_path = "typings"
 exclude = "^(tests/|conftest\\.py|outputs/|typings/|out/)"
+
+plugins = [ "numpy.typing.mypy_plugin" ]
 
 # follow_imports = "silent"
 # ignore_missing_imports = true
@@ -49,4 +52,3 @@ sections = [
     "THIRDPARTY",
     "LOCALFOLDER",
 ]
-
