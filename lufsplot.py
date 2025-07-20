@@ -69,32 +69,32 @@ else:
 
 # regex for parsing the ffmpeg output
 re_ffmpeg = re.compile(r"""
-\[Parsed_ebur128_0 \s @ \s (0x)?[0-9a-f]+ \]
-\s+
-t: \s (?P<time> [\d.]+)
-\s+
-TARGET: \s* (?P<target> [.0-9-]+) \s LUFS
-\s+
-M: \s* (?P<momentary> [.0-9-]+)
-\s+
-S: \s* (?P<short> [.0-9-]+)
-\s+
-I: \s* (?P<integrated> [.0-9-]+) \s LUFS
-\s+
-LRA: \s* (?P<lra> [.0-9-]+) \s LU
-\s+
-FTPK: \s* (?P<ftpk_l> [.0-9-]+) \s+ (?P<ftpk_r> [.0-9-]+) \s dBFS
-\s+
-TPK: \s* (?P<tpk_l> [.0-9-]+) \s+ (?P<tpk_r> [.0-9-]+) \s dBFS
+    \[Parsed_ebur128_0 \s @ \s (0x)?[0-9a-f]+ \]
+    \s+
+    t: \s (?P<time> [\d.]+)
+    \s+
+    TARGET: \s* (?P<target> [.0-9-]+) \s LUFS
+    \s+
+    M: \s* (?P<momentary> [.0-9-]+)
+    \s+
+    S: \s* (?P<short> [.0-9-]+)
+    \s+
+    I: \s* (?P<integrated> [.0-9-]+) \s LUFS
+    \s+
+    LRA: \s* (?P<lra> [.0-9-]+) \s LU
+    \s+
+    FTPK: \s* (?P<ftpk_l> [.0-9-]+) \s+ (?P<ftpk_r> [.0-9-]+) \s dBFS
+    \s+
+    TPK: \s* (?P<tpk_l> [.0-9-]+) \s+ (?P<tpk_r> [.0-9-]+) \s dBFS
 """, re.VERBOSE | re.IGNORECASE)
 
 # regex for parsing the ffmpeg summary output
 re_ffmpeg_summary = re.compile(r"""
-\s+
-(?P<field> [A-Z ]+) :
-\s+
-(?P<value> [.0-9-]+)
-\s+
+    \s+
+    (?P<field> [A-Z ]+) :
+    \s+
+    (?P<value> [.0-9-]+)
+    \s+
 """, re.VERBOSE | re.IGNORECASE)
 
 
@@ -814,7 +814,14 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
         if config_path.exists():
             try:
                 with config_path.open('r') as f:
-                    config_content = f.read().strip()
+                    # Process each line to remove comments using regex
+                    config_lines = []
+                    for line in f:
+                        # Remove comments with regex and strip whitespace
+                        line = re.sub(r'#.*$', '', line).strip()
+                        if line:  # Only add non-empty lines
+                            config_lines.append(line)
+                    config_content = ' '.join(config_lines)
                     if config_content:
                         # Split on whitespace and filter out empty strings
                         config_args = [arg for arg in config_content.split() if arg]
@@ -996,7 +1003,6 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
-
 
 # common loudness ranges:
 #
