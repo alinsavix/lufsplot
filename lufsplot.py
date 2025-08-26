@@ -806,27 +806,59 @@ class NegateAction(argparse.Action):
 
         setattr(namespace, self.dest, option_string[2:4] != 'no')
 
+
+def CheckMultipleFiles(extensions: Optional[Set[str]] = None, must_exist: bool = False) -> Type[argparse.Action]:
+    class Act(argparse.Action):
+        def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+                     values: List[Path], option_string: Optional[Text] = "") -> None:
+            if not isinstance(values, list):
+                parser.error(
+                    f"CheckMultipleFiles called but argument is {type(values)} and not a list? (bug)")
+
+            for value in values:
+                if not isinstance(value, Path):
+                    parser.error(
+                        f"CheckMultipleFiles called but argument contains {type(value)} and not a pathlib path? (bug)")
+
+                if extensions and value.suffix[1:] not in extensions:
+                    parser.error(f"file '{value}' doesn't end with one of {extensions}")
+
+                if must_exist and not value.exists():
+                    parser.error(f"file '{value}' does not exist")
+
+            setattr(namespace, self.dest, values)
+
+    return Act
+
 def parse_arguments(argv: List[str]) -> argparse.Namespace:
-    # Look for config file in the same directory as the input file
+    # Look for config file in the same directory as the first input file
     config_args = []
-    if len(argv) > 0 and argv[-1].endswith(('.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4', '.mkv', '.avi', '.mov')):
-        config_path = Path(argv[-1]).parent / "lufsplot.cfg"
-        if config_path.exists():
-            try:
-                with config_path.open('r') as f:
-                    # Process each line to remove comments using regex
-                    config_lines = []
-                    for line in f:
-                        # Remove comments with regex and strip whitespace
-                        line = re.sub(r'#.*$', '', line).strip()
-                        if line:  # Only add non-empty lines
-                            config_lines.append(line)
-                    config_content = ' '.join(config_lines)
-                    if config_content:
-                        # Split on whitespace and filter out empty strings
-                        config_args = [arg for arg in config_content.split() if arg]
-            except Exception as e:
-                print(f"Warning: Could not read config file {config_path}: {e}", file=sys.stderr)
+    if len(argv) > 0:
+        # Find the first file argument (last argument that ends with a media extension)
+        first_file = None
+        for arg in reversed(argv):
+            if arg.endswith(('.mp3', '.wav', '.m4a', '.flac', '.ogg', '.mp4', '.mkv', '.avi', '.mov')):
+                first_file = arg
+                break
+
+        if first_file:
+            config_path = Path(first_file).parent / "lufsplot.cfg"
+            if config_path.exists():
+                try:
+                    with config_path.open('r') as f:
+                        # Process each line to remove comments using regex
+                        config_lines = []
+                        for line in f:
+                            # Remove comments with regex and strip whitespace
+                            line = re.sub(r'#.*$', '', line).strip()
+                            if line:  # Only add non-empty lines
+                                config_lines.append(line)
+                        config_content = ' '.join(config_lines)
+                        if config_content:
+                            # Split on whitespace and filter out empty strings
+                            config_args = [arg for arg in config_content.split() if arg]
+                except Exception as e:
+                    print(f"Warning: Could not read config file {config_path}: {e}", file=sys.stderr)
 
     # Combine config args with command line args
     all_args = config_args + argv
@@ -960,14 +992,19 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
 
     # positional arguments
     parser.add_argument(
-        "file",
+        "files",
         type=Path,
-        action=CheckFile(must_exist=True),
-        help="file for which to analyze loudness",
+        nargs='+',
+        # action=CheckMultipleFiles(must_exist=True),
+        help="files for which to analyze loudness",
     )
 
     parsed_args = parser.parse_args(all_args)
     set_lufs_target(parsed_args, parsed_args.target)
+
+    # If multiple files are specified, automatically disable interactive mode
+    if len(parsed_args.files) > 1:
+        parsed_args.interactive = False
 
     # make sure we enable writing the graph if the user specifies a filename
     if parsed_args.outfile:
@@ -976,8 +1013,9 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
     if not parsed_args.interactive:
         parsed_args.write_graph = True
 
-    if parsed_args.write_graph and parsed_args.outfile is None:
-        parsed_args.outfile = parsed_args.file.with_suffix(".loudness.png")
+    # For multiple files, we'll handle output filenames in the main function
+    if parsed_args.write_graph and parsed_args.outfile is None and len(parsed_args.files) == 1:
+        parsed_args.outfile = parsed_args.files[0].with_suffix(".loudness.png")
     return parsed_args
 
 
@@ -986,17 +1024,29 @@ def main(argv: List[str]) -> int:
 
     if args.benchmark:
         start_time = time.time()
-        print(f"Starting benchmark for {args.file.name}...", file=sys.stderr)
+        total_size = sum(f.stat().st_size for f in args.files)
+        print(f"Starting benchmark for {len(args.files)} file(s)...", file=sys.stderr)
 
-    gen_loudness(args.file, f"Loudness Analysis: {args.file.name}", args)
+    # Process each file
+    for i, file in enumerate(args.files):
+        if len(args.files) > 1:
+            print(f"Processing file {i + 1}/{len(args.files)}: {file.name}", file=sys.stderr)
+
+        # Create a copy of args for this file to handle output filename
+        file_args = argparse.Namespace(**vars(args))
+        if args.write_graph and args.outfile is None:
+            file_args.outfile = file.with_suffix(".loudness.png")
+
+        gen_loudness(file, f"Loudness Analysis: {file.name}", file_args)
 
     if args.benchmark:
         end_time = time.time()
         duration = end_time - start_time
+        total_size = sum(f.stat().st_size for f in args.files)
         print("\nBenchmark Results:", file=sys.stderr)
         print(f"Total processing time: {duration:.2f} seconds", file=sys.stderr)
-        print(f"File size: {args.file.stat().st_size / (1024 * 1024):.2f} MB", file=sys.stderr)
-        print(f"Processing speed: {args.file.stat().st_size / (1024 * 1024 * duration):.2f} MB/s", file=sys.stderr)
+        print(f"Total file size: {total_size / (1024 * 1024):.2f} MB", file=sys.stderr)
+        print(f"Processing speed: {total_size / (1024 * 1024 * duration):.2f} MB/s", file=sys.stderr)
 
     return 0
 
