@@ -512,7 +512,7 @@ class LUFSLoadAnimation:
         changed: List[Artist] = []
         summary = self._loudness.summary()
 
-        if summary["LRA low"] and summary["LRA high"]:
+        if summary.get("LRA low") and summary.get("LRA high"):
             lra = self._axs[0].axhspan(summary["LRA low"],
                                        summary["LRA high"], color='gainsboro', alpha=0.3)
             changed.append(lra)
@@ -523,7 +523,7 @@ class LUFSLoadAnimation:
                                              horizontalalignment='right', fontsize=14)
             changed.append(lra_text)
 
-        if summary["I"]:
+        if summary.get("I"):
             dot = self._axs[0].plot([xloc], summary["I"], label="_Integrated Final",
                                     color='b', marker='o', markersize=7)[0]
             changed.append(dot)
@@ -532,7 +532,7 @@ class LUFSLoadAnimation:
                 str(summary["I"]), (xloc, summary["I"] + 0.5), fontsize=18)
             changed.append(anno)
 
-        if self.args.lra and summary["LRA"]:
+        if self.args.lra and summary.get("LRA"):
             dot = self._axs[1].plot([xloc], summary["LRA"], label="_LRA Final",
                                     color='g', marker='o', markersize=7)[0]
             changed.append(dot)
@@ -599,43 +599,48 @@ class LUFSLoadAnimation:
         # FIXME: is there a better/more efficient way to manage all this?
         lind: npt.NDArray[Any] = np.array(self._data)
 
-        T = lind[:, Fields.TIME]
-        momentary = lind[:, Fields.MOMENTARY]
-        short = lind[:, Fields.SHORT]
-        integrated = lind[:, Fields.INTEGRATED]
-        lra = lind[:, Fields.LRA]
-        ftpk = lind[:, Fields.FTPK]
+        # Media shorter than the ~3s short-term window produces no usable
+        # samples (they all get skipped in values()), leaving _data empty and
+        # lind a 1-D, zero-length array. Skip the per-sample plotting in that
+        # case; the summary-based finalize below still draws what it can.
+        if lind.ndim == 2:
+            T = lind[:, Fields.TIME]
+            momentary = lind[:, Fields.MOMENTARY]
+            short = lind[:, Fields.SHORT]
+            integrated = lind[:, Fields.INTEGRATED]
+            lra = lind[:, Fields.LRA]
+            ftpk = lind[:, Fields.FTPK]
 
-        if self.args.momentary:
-            self._lines[0][Fields.MOMENTARY].set_data(
-                T, np.ma.masked_where(momentary <= -120.7, momentary))
+            if self.args.momentary:
+                self._lines[0][Fields.MOMENTARY].set_data(
+                    T, np.ma.masked_where(momentary <= -120.7, momentary))
 
-        if self.args.short:
-            self._lines[0][Fields.SHORT].set_data(T, np.ma.masked_where(short <= -120.7, short))
+            if self.args.short:
+                self._lines[0][Fields.SHORT].set_data(T, np.ma.masked_where(short <= -120.7, short))
 
-        if self.args.integrated:
-            self._lines[0][Fields.INTEGRATED].set_data(
-                T, np.ma.masked_where(integrated <= -70.0, integrated))
+            if self.args.integrated:
+                self._lines[0][Fields.INTEGRATED].set_data(
+                    T, np.ma.masked_where(integrated <= -70.0, integrated))
 
-        if self.args.peaks:
-            WINDOW = 3
-            padding = [np.nan for _ in range(WINDOW - 1)]
+            if self.args.peaks:
+                WINDOW = 3
+                padding = [np.nan for _ in range(WINDOW - 1)]
 
-            mmax = np.max(sliding_window_view(ftpk, window_shape=WINDOW), axis=1)
-            self._lines[0][Fields.FTPK].set_data(T,
-                                                 np.concatenate((padding, np.ma.masked_where(mmax >= self.args.clip_at, mmax))))
+                mmax = np.max(sliding_window_view(ftpk, window_shape=WINDOW), axis=1)
+                self._lines[0][Fields.FTPK].set_data(T,
+                                                     np.concatenate((padding, np.ma.masked_where(mmax >= self.args.clip_at, mmax))))
 
-            self._lines[0][Fields.CLIP].set_data(
-                T, np.ma.masked_where(ftpk < self.args.clip_at, ftpk))
+                self._lines[0][Fields.CLIP].set_data(
+                    T, np.ma.masked_where(ftpk < self.args.clip_at, ftpk))
 
-        elif self.args.clipping:
-            self._lines[0][Fields.CLIP].set_data(
-                T, np.ma.masked_where(ftpk < self.args.clip_at, self.args.clip_at - (ftpk)))
+            elif self.args.clipping:
+                self._lines[0][Fields.CLIP].set_data(
+                    T, np.ma.masked_where(ftpk < self.args.clip_at, self.args.clip_at - (ftpk)))
 
-        if self.args.lra:
-            self._lines[1][Fields.LRA].set_data(T[150:], lra[150:].clip(None, 20.0))
-            self._axs[1].relim()
-            self._axs[1].autoscale_view(scalex=False, scaley=True)
+            if self.args.lra:
+                self._lines[1][Fields.LRA].set_data(T[150:], lra[150:].clip(None, 20.0))
+                self._axs[1].relim()
+                self._axs[1].autoscale_view(scalex=False, scaley=True)
 
         # Anything we need to do on the first frame only
         if self._first:
@@ -643,7 +648,10 @@ class LUFSLoadAnimation:
 
         final_changes: List[Artist] = []
         if self._end:
-            final_changes = self.graph_finalize(T[-1])
+            # With no per-sample data, anchor the final annotations at the
+            # media duration rather than the (nonexistent) last sample time.
+            xloc = lind[-1, Fields.TIME] if lind.ndim == 2 else self._duration
+            final_changes = self.graph_finalize(xloc)
 
         # Not 100% sure why the casting is needed here, tbh, since Line2D
         # should still be an Artist? I'm probably missing something stupid.
